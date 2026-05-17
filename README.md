@@ -136,7 +136,9 @@ python annotation_tool/make_pseudo_to_gt.py --dataset refcoco
 python annotation_tool/mask_annotation_sam.py --dataset refcoco
 # → datasets/al_cost/mask3/refcoco/sam_correction_stats.json
 
-# Text cost (ViP-LLaVA-based typing simulation, 4-GPU DDP)
+# Text cost (ViP-LLaVA-based typing simulation, 4-GPU DDP).
+# The mono / bi / tri-gram count files are the English letter-frequency
+# tables from http://www.practicalcryptography.com/cryptanalysis/letter-frequencies-various-languages/english-letter-frequencies/
 torchrun --nproc_per_node=4 annotation_tool/text_annotation_info.py \
     --dataset refcoco \
     --mono_counts datasets/n_gram/english_mono.txt \
@@ -186,8 +188,9 @@ Use the provided `config/refcoco_detris.yaml` with
 For RefCOCO+ / RefCOCO-g copy this yaml, swap `dataset`, the LMDB / mask
 paths, and the `test_*` block.
 
-## Annotation tool 
+## Annotation tool
 
 A short screen-capture walkthrough of the full annotation flow (mask
-correction → token-by-token caption typing → save) is included at
-[`demo/Demo_video_for_proposed_annotation_interface.mov`](demo/Demo_video_for_proposed_annotation_interface.mov).
+correction → token-by-token caption typing → save):
+
+![Annotation tool demo](demo/Demo_video_for_proposed_annotation_interface.gif)
