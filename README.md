@@ -191,6 +191,6 @@ paths, and the `test_*` block.
 ## Annotation tool
 
 A short screen-capture walkthrough of the full annotation flow (mask
-correction → token-by-token caption typing → save):
+correction → token-by-token click → save):
 
 ![Annotation tool demo](demo/Demo_video_for_proposed_annotation_interface.gif)
