@@ -1,0 +1,41 @@
+# Training / inference (active_train.py, model, engine)
+torch==2.4.1
+torchvision==0.19.1
+numpy==1.24.4
+opencv-python>=4.8
+Pillow>=10.0
+PyYAML>=6.0
+loguru>=0.7
+tqdm>=4.66
+fvcore>=0.1.5
+einops>=0.7
+pandas>=2.0
+wandb>=0.16
+pycocotools>=2.0.7
+ftfy>=6.1
+regex>=2023.10.3
+
+# LMDB stack — pinned for legacy pyarrow.serialize used by the loader
+pyarrow<12
+lmdb<1.5
+cffi>=1.16
+
+# ─── Annotation tool (project/app_ours_annotation/, optional) ───────────────
+Flask>=3.0
+requests>=2.31
+protobuf>=4.25
+# vip-llava runtime pin
+transformers==4.37.2
+accelerate>=0.27
+sentencepiece>=0.1.99
+
+# ─── Mask cost / annotation utilities (annotation_tool/, optional) ──────────
+alphashape>=1.3
+shapely>=2.0
+rdp>=0.8
+nltk>=3.8
+
+# ─── External submodules (manual install — not standard PyPI) ──────────────
+# segment-anything:  pip install git+https://github.com/facebookresearch/segment-anything.git
+# GroundingDINO:     pip install groundingdino-py>=0.4
+# ViP-LLaVA:         clone https://github.com/mu-cai/ViP-LLaVA, add to PYTHONPATH
