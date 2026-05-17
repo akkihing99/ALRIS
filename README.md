@@ -5,6 +5,14 @@ Cost-Efficient Active Learning for Referring Image Segmentation and Grounding.
 > **Anonymous repository for double-blind review.** No author / institution
 > information is included here; please do not deanonymize.
 
+## Annotation tool
+
+A short screen-capture walkthrough of the full annotation flow (mask
+correction → token-by-token click → save):
+
+![Annotation tool demo](demo/Demo_video_for_proposed_annotation_interface.gif)
+
+
 ## Repository layout
 
 ```
@@ -188,9 +196,3 @@ Use the provided `config/refcoco_detris.yaml` with
 For RefCOCO+ / RefCOCO-g copy this yaml, swap `dataset`, the LMDB / mask
 paths, and the `test_*` block.
 
-## Annotation tool
-
-A short screen-capture walkthrough of the full annotation flow (mask
-correction → token-by-token click → save):
-
-![Annotation tool demo](demo/Demo_video_for_proposed_annotation_interface.gif)
