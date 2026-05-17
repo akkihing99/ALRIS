@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SAM Mask Annotation Tool</title>
+  <style>
+    body { font-family: sans-serif; background-color: #f4f4f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+    .tool-wrapper { display: flex; flex-direction: column; align-items: center; gap: 15px; padding: 20px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 12px; }
+    .status-bar { font-size: 1.1em; color: #333; font-weight: bold; background: #e9ecef; padding: 8px 16px; border-radius: 8px; width: 100%; text-align: center; box-sizing: border-box; }
+    .viewer { position: relative; display: inline-block; line-height: 0; }
+    .viewer .base-image { display: block; border-radius: 4px; }
+    .viewer canvas { position: absolute; top: 0; left: 0; cursor: pointer; transition: opacity 0.15s ease-in-out; }
+    .controls { display: flex; gap: 10px; }
+    .controls button { font-size: 1em; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; transition: background-color 0.2s; color: white; }
+    #undo-btn { background-color: #6c757d; }
+    #undo-btn:hover { background-color: #5a6268; }
+    #reset-btn { background-color: #dc3545; }
+    #reset-btn:hover { background-color: #c82333; }
+    #next-btn { background-color: #218838; }
+    #next-btn:hover { background-color: #0c6d21; }
+  </style>
+</head>
+<body>
+
+<div class="tool-wrapper">
+  <div id="status-bar" class="status-bar">Loading...</div>
+  <div class="viewer" id="viewer"></div>
+    <div class="controls">
+        <button id="undo-btn">Undo</button>
+        <button id="reset-btn">Reset</button>
+        <button id="next-btn">Save & Continue</button>
+    </div>
+</div>
+
+<script>
+    // --- DOM Elements & State ---
+    const viewer = document.getElementById('viewer');
+    const statusBar = document.getElementById('status-bar');
+    const undoBtn = document.getElementById('undo-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const nextBtn = document.getElementById('next-btn');
+    let allImageFiles = [];
+    let currentIndex = 0;
+    let maskCanvases = [];
+    let actionHistory = [];
+    
+
+
+    // --- Initialization ---
+    async function initialize() {
+        try {
+            const response = await fetch('/api/images');
+            allImageFiles = await response.json();
+            const startImage = '{{ start_image | default("null") }}';
+            let startIndex = 0;
+            if (startImage !== "null") {
+                const foundIndex = allImageFiles.indexOf(startImage);
+                if (foundIndex !== -1) startIndex = foundIndex;
+            }
+            if (allImageFiles.length > 0) {
+                await loadImageForAnnotation(startIndex); 
+            } else {
+                statusBar.textContent = "No images found in 'uploads' directory.";
+            }
+        } catch (error) {
+            console.error("Initialization failed:", error);
+            statusBar.textContent = "Error: Could not load image list from server.";
+        }
+    }
+
+    // --- Load Image and Masks ---
+    async function loadImageForAnnotation(index) {
+        if (index < 0 || index >= allImageFiles.length) return;
+        currentIndex = index;
+        const imageFile = allImageFiles[index];
+        const imageStem = imageFile.split('.').slice(0, -1).join('.');
+
+        viewer.innerHTML = '';
+        maskCanvases = [];
+        actionHistory = [];
+
+        statusBar.textContent = `Use click to complete the given green mask. (${index + 1} / ${allImageFiles.length})`;
+        nextBtn.disabled = false;
+
+        const baseImg = document.createElement('img');
+        baseImg.className = 'base-image';
+        baseImg.src = `/uploads/${imageFile}`;
+        viewer.appendChild(baseImg);
+
+        await new Promise(resolve => baseImg.onload = resolve);
+      
+        const W = baseImg.naturalWidth, H = baseImg.naturalHeight;
+        viewer.style.width = W + 'px';
+        viewer.style.height = H + 'px';
+
+        try {
+            const masksResponse = await fetch(`/api/masks/${imageStem}`);
+            const maskDataArray = await masksResponse.json(); 
+            
+            const pseudoMask = maskDataArray.find(m => m.name === 'pseudo_mask.png');
+            const otherMasks = maskDataArray.filter(m => m.name !== 'pseudo_mask.png');
+            
+            if (pseudoMask) {
+                console.log('[MASK] Adding pseudo_mask first (fixed=true)');
+                addMask(pseudoMask, W, H, true);
+            } else {
+                console.warn('[MASK] No pseudo_mask.png found!');
+            }
+            
+            otherMasks.forEach(maskInfo => {
+                console.log(`[MASK] Adding ${maskInfo.name} (fixed=false)`);
+                addMask(maskInfo, W, H, false);
+            });
+        } catch (error) {
+            console.error(`Failed to load masks for ${imageStem}:`, error);
+        }
+    }
+
+    function addMask(maskInfo, W, H, isInitiallyFixed) {
+        const canvas = document.createElement("canvas");
+        canvas.width = W; 
+        canvas.height = H;
+        canvas.style.opacity = isInitiallyFixed ? 0.85 : 0;
+        canvas.dataset.fixed = isInitiallyFixed ? "true" : "false";
+        canvas.dataset.maskName = maskInfo.name;
+        viewer.appendChild(canvas);
+
+        const ctx = canvas.getContext("2d");
+        const maskSet = new Set();
+        maskCanvases.push({ canvas, maskSet, name: maskInfo.name });
+
+        const tempImg = new Image();
+        tempImg.onload = () => {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = W; tempCanvas.height = H;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(tempImg, 0, 0, W, H);
+            const imageData = tempCtx.getImageData(0, 0, W, H).data;
+            for (let i = 0; i < imageData.length; i += 4) {
+                if (imageData[i] > 127) {
+                    const pixelIndex = i / 4;
+                    maskSet.add(`${pixelIndex % W},${Math.floor(pixelIndex / W)}`);
+                }
+            }
+            console.log(`[MASK] ${maskInfo.name} maskSet populated with ${maskSet.size} pixels`);
+        };
+        tempImg.src = `data:image/png;base64,${maskInfo.data}`;
+
+        const contours = maskInfo.contour;
+        if (!contours || contours.length === 0) {
+            console.warn(`[MASK] ${maskInfo.name} has no contours`);
+            return;
+        }
+
+        ctx.fillStyle = "rgba(57, 255, 20, 0.6)";
+        ctx.strokeStyle = "rgba(173, 255, 47, 0.85)";
+        ctx.lineWidth = 5;
+
+        contours.forEach((contour, idx) => {
+            if (!contour || contour.length < 3) {
+                console.warn(`[MASK] ${maskInfo.name} contour ${idx} is invalid`);
+                return;
+            }
+
+            ctx.beginPath();
+            if (typeof contour[0] === 'number') {
+                console.warn(`[MASK] ${maskInfo.name} contour ${idx} has invalid format`);
+                return;
+            }
+            ctx.moveTo(contour[0][0], contour[0][1]);
+            for (let i = 1; i < contour.length; i++) {
+                ctx.lineTo(contour[i][0], contour[i][1]);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        });
+    }
+
+    // --- Event Handlers ---
+    function getCanvasPixelKey(e) {
+      const r = viewer.getBoundingClientRect();
+      const baseImg = viewer.querySelector('.base-image');
+      if (!baseImg) return null;
+      const x = Math.floor(e.clientX - r.left);
+      const y = Math.floor(e.clientY - r.top);
+      return `${x},${y}`;
+    }
+
+    viewer.addEventListener("mousemove", e => {
+        const k = getCanvasPixelKey(e);
+        if (!k) return;
+        let hoveredMaskIndex = -1;
+        for (let i = maskCanvases.length - 1; i >= 0; i--) {
+            if (maskCanvases[i].maskSet.has(k)) {
+                hoveredMaskIndex = i;
+                break;
+            }
+        }
+        maskCanvases.forEach(({ canvas }, index) => {
+            const isFixed = canvas.dataset.fixed === 'true';
+            const isHovered = index === hoveredMaskIndex;
+            canvas.style.opacity = (isFixed || isHovered) ? 0.85 : 0;
+        });
+    });
+
+    viewer.addEventListener("mouseleave", () => {
+        maskCanvases.forEach(({ canvas }) => {
+            canvas.style.opacity = canvas.dataset.fixed === 'true' ? 0.85 : 0;
+        });
+    });
+
+    viewer.addEventListener("click", e => {
+      const k = getCanvasPixelKey(e);
+      if (!k) return;
+      for (let i = maskCanvases.length - 1; i >= 0; i--) {
+          const { canvas, maskSet } = maskCanvases[i];
+          if (maskSet.has(k)) {
+              const oldFixed = canvas.dataset.fixed;
+              const newFixed = oldFixed === "true" ? "false" : "true";
+              
+              actionHistory.push({ maskIndex: i, oldFixed: oldFixed });
+              
+              canvas.dataset.fixed = newFixed;
+              canvas.style.opacity = 0.85;
+              console.log(`[CLICK] Toggled ${canvas.dataset.maskName} to fixed=${canvas.dataset.fixed}`);
+              break;
+          }
+      }
+    });
+
+    undoBtn.addEventListener('click', () => {
+        if (actionHistory.length === 0) {
+            alert("No actions to undo.");
+            return;
+        }
+        
+        const lastAction = actionHistory.pop();
+        const { canvas } = maskCanvases[lastAction.maskIndex];
+        canvas.dataset.fixed = lastAction.oldFixed;
+        canvas.style.opacity = lastAction.oldFixed === 'true' ? 0.85 : 0;
+        
+        console.log(`[UNDO] Reverted ${canvas.dataset.maskName} to fixed=${lastAction.oldFixed}`);
+    });
+
+    resetBtn.addEventListener('click', () => {
+        maskCanvases.forEach(({ canvas, name }) => {
+            const isPseudo = name === 'pseudo_mask.png';
+            canvas.dataset.fixed = isPseudo ? "true" : "false";
+            canvas.style.opacity = isPseudo ? 0.85 : 0;
+            console.log(`[RESET] ${name} -> fixed=${canvas.dataset.fixed}`);
+        });
+        actionHistory = [];
+        statusBar.textContent = `Reset complete. (${currentIndex + 1} / ${allImageFiles.length})`;
+    });
+
+    nextBtn.addEventListener('click', async () => {
+        const baseImg = viewer.querySelector('.base-image');
+        if (!baseImg) return;
+
+        const W = baseImg.naturalWidth, H = baseImg.naturalHeight;
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = W; 
+        finalCanvas.height = H;
+        const finalCtx = finalCanvas.getContext('2d');
+        finalCtx.fillStyle = 'black';
+        finalCtx.fillRect(0, 0, W, H);
+
+        const selectedMasks = maskCanvases.filter(mc => mc.canvas.dataset.fixed === 'true');
+        if(selectedMasks.length === 0){
+            alert("No masks selected.");
+            return;
+        }
+        
+        console.log(`[NEXT] Selected masks: ${selectedMasks.map(m => m.name).join(', ')}`);
+        
+        finalCtx.fillStyle = 'white';
+        selectedMasks.forEach(({ maskSet }) => {
+            maskSet.forEach(p => {
+                const [px, py] = p.split(",").map(Number);
+                finalCtx.fillRect(px, py, 1, 1);
+            });
+        });
+
+        const imageDataUrl = finalCanvas.toDataURL('image/png');
+        const imageStem = allImageFiles[currentIndex].split('.').slice(0, -1).join('.');
+
+        try {
+            statusBar.textContent = 'Saving mask...';
+            const response = await fetch(`/api/save_annotation/${imageStem}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image_data: imageDataUrl
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server error: ${response.status} - ${errorText}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success && result.redirect_url) {
+                statusBar.textContent = 'Moving to text annotation...';
+                window.location.href = result.redirect_url;
+            } else { 
+                throw new Error(result.error || 'Unknown error'); 
+            }
+        } catch (error) {
+            console.error("Failed to save annotation:", error);
+            alert(`Error saving annotation: ${error.message}`);
+            statusBar.textContent = `Image ${currentIndex + 1} / ${allImageFiles.length}: ${allImageFiles[currentIndex]}`;
+        }
+    });
+    
+    initialize();
+</script>
+</body>
+</html>

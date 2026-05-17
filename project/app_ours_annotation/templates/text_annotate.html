@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Interactive Captioning</title>
+<style>
+  body{font-family:sans-serif; padding: 20px;}
+  .token-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;} 
+  .action-buttons{
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+  }
+  .finish-btn{
+    padding: 10px 30px;
+    font-size: 1.1em;
+    background-color: #218838;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  .finish-btn:hover{
+    background-color: #0c6d21;
+  }
+  .reset-btn{
+    padding: 10px 30px;
+    font-size: 1.1em;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  .reset-btn:hover{
+    background-color: #c82333;
+  }
+  .current-caption{
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border-left: 4px solid #007bff;
+  }
+</style>
+</head>
+<body>
+
+<h2>{{ caption_text }}</h2>
+
+<div style="display:flex;align-items:flex-start;gap:40px">
+  
+  <div><img src="data:image/png;base64,{{ image_base64 }}" style="max-width:500px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);"></div>
+
+  
+  <div style="flex: 1;">
+    <!-- Current caption -->
+    <div class="current-caption">
+      <strong>Current caption:</strong><br>
+      {{ prev_input if prev_input else "the" }}
+    </div>
+
+    
+    <form method="POST" id="token-form">
+      <div class="token-grid">
+      {% for token in top_tokens %}
+        <label style="cursor: pointer;">
+          <input type="checkbox" name="tokens" value="{{ token }}" onchange="this.form.submit();">
+          <strong>{{ token }}</strong>
+        </label>
+      {% endfor %}
+
+        
+        <label style="display: flex; align-items: center; gap: 4px;">
+          <input type="text" name="custom_token" placeholder="type word…" style="flex: 1; padding: 4px;">
+          <button type="submit">✓</button>
+        </label>
+      </div>
+    </form>
+
+    
+    <div class="action-buttons">
+      
+      <form method="POST" id="reset-form">
+        <input type="hidden" name="action" value="reset">
+        <button type="submit" class="reset-btn">Reset</button>
+      </form>
+
+      
+      <form method="POST" id="finish-form">
+        <input type="hidden" name="action" value="finish">
+        <button type="submit" class="finish-btn">Finish & Next Image</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('finish-form').onsubmit = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+
+    try {
+      const response = await fetch(window.location.href, {
+        method: 'POST',
+        body: new URLSearchParams(new FormData(form))
+      });
+      
+      const result = await response.json();
+      
+      if (result.redirect) {
+        window.location.href = result.redirect;
+      } else {
+        throw new Error(result.error || "An unknown error occurred.");
+      }
+    } catch (error) {
+      console.error("[CLIENT] Error:", error);
+      alert("Error: " + error.message);
+    }
+    
+    return false;
+  };
+
+
+  document.getElementById('reset-form').onsubmit = function() {
+    return confirm("Are you sure you want to reset? All caption progress will be lost.");
+  };
+
+
+  document.getElementById('token-form').onsubmit = function() {
+
+      return true;
+  };
+</script>
+
+</body>
+</html>
